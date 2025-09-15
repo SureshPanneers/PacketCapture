@@ -1,84 +1,51 @@
-from flask import Flask, request, jsonify, Response, send_file
-from scapy.all import sniff, wrpcap, rdpcap
-import threading
-import time
+from flask import Flask, request, jsonify
+from services.capture import PacketCapture
+from services.analyzer import PacketAnalyzer
 
 app = Flask(__name__)
 
-packets_buffer = []
-capturing = False
-capture_thread = None
-pcap_file = "captured_packets.pcap"
+# Initialize services
+capture_service = PacketCapture()
+analyzer_service = PacketAnalyzer()
 
 
-def capture_packets():
-    """Background packet capture thread"""
-    global packets_buffer, capturing
-    packets_buffer = []
-    sniff(prn=lambda x: packets_buffer.append(x), store=True, stop_filter=lambda x: not capturing)
+@app.route("/")
+def home():
+    return jsonify({"status": "Packet Analyzer running on EC2"})
 
 
-@app.post("/capture/start")
+@app.route("/capture/start", methods=["POST"])
 def start_capture():
-    global capturing, capture_thread
-    if capturing:
-        return {"status": "already capturing"}
-    capturing = True
-    capture_thread = threading.Thread(target=capture_packets, daemon=True)
-    capture_thread.start()
-    return {"status": "capture started"}
+    capture_service.start()
+    return jsonify({"message": "Packet capture started!"})
 
 
-@app.post("/capture/stop")
+@app.route("/capture/stop", methods=["POST"])
 def stop_capture():
-    global capturing
-    capturing = False
-    if packets_buffer:
-        wrpcap(pcap_file, packets_buffer)
-    return {"status": "capture stopped", "saved_file": pcap_file}
+    capture_service.stop()
+    return jsonify({"message": "Packet capture stopped!"})
 
 
-@app.get("/packets")
+@app.route("/packets", methods=["GET"])
 def get_packets():
-    proto = request.args.get("protocol")
-    data = []
-    for pkt in packets_buffer:
-        summary = pkt.summary()
-        if not proto or proto.lower() in summary.lower():
-            data.append(summary)
-    return jsonify(data)
+    protocol = request.args.get("protocol")
+    src_ip = request.args.get("src_ip")
+    dst_ip = request.args.get("dst_ip")
 
+    packets = capture_service.get_packets()
+    analyzed = analyzer_service.analyze(packets)
 
-@app.post("/upload/pcap")
-def upload_pcap():
-    file = request.files["file"]
-    packets = rdpcap(file)
-    global packets_buffer
-    packets_buffer = packets
-    return {"status": "pcap uploaded", "packet_count": len(packets_buffer)}
+    # Apply filters
+    if protocol:
+        analyzed = [pkt for pkt in analyzed if pkt.get("protocol") == protocol]
+    if src_ip:
+        analyzed = [pkt for pkt in analyzed if pkt.get("src_ip") == src_ip]
+    if dst_ip:
+        analyzed = [pkt for pkt in analyzed if pkt.get("dst_ip") == dst_ip]
 
-
-@app.get("/download/pcap")
-def download_pcap():
-    if not packets_buffer:
-        return {"error": "No packets available"}, 400
-    wrpcap(pcap_file, packets_buffer)
-    return send_file(pcap_file, as_attachment=True)
-
-
-@app.get("/stream/packets")
-def stream_packets():
-    def generate():
-        last_len = 0
-        while capturing:
-            if len(packets_buffer) > last_len:
-                for pkt in packets_buffer[last_len:]:
-                    yield f"data: {pkt.summary()}\n\n"
-                last_len = len(packets_buffer)
-            time.sleep(1)
-
-    return Response(generate(), mimetype="text/event-stream")
+    return jsonify(analyzed)
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0")
+    # Important: bind to 0.0.0.0 and use port 8000 for EC2 access
+    app.run(host="0.0.0.0", port=8000, debug=True)
