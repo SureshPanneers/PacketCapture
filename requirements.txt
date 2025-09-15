@@ -5,3 +5,5 @@ scikit-learn
 pandas
 sqlalchemy
 python-multipart
+flask
+scapy
