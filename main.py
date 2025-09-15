@@ -1,51 +1,48 @@
-from flask import Flask, request, jsonify
-from services.capture import PacketCapture
-from services.analyzer import PacketAnalyzer
+from fastapi import FastAPI, Query
+from typing import Optional
+from packet_capture import capture_packets
+from classifier import train_anomaly_detector
+from sqlalchemy import create_engine, Table, MetaData, select
 
-app = Flask(__name__)
+app = FastAPI(title="Packet Capture Microservice")
 
-# Initialize services
-capture_service = PacketCapture()
-analyzer_service = PacketAnalyzer()
+engine = create_engine("sqlite:///database.db")
+metadata = MetaData()
+packets_table = Table('packets', metadata, autoload_with=engine)
 
 
-@app.route("/")
+@app.get("/")
 def home():
-    return jsonify({"status": "Packet Analyzer running on EC2"})
+    return {"status": "Packet Analyzer running on EC2"}
 
 
-@app.route("/capture/start", methods=["POST"])
-def start_capture():
-    capture_service.start()
-    return jsonify({"message": "Packet capture started!"})
-
-
-@app.route("/capture/stop", methods=["POST"])
-def stop_capture():
-    capture_service.stop()
-    return jsonify({"message": "Packet capture stopped!"})
-
-
-@app.route("/packets", methods=["GET"])
-def get_packets():
-    protocol = request.args.get("protocol")
-    src_ip = request.args.get("src_ip")
-    dst_ip = request.args.get("dst_ip")
-
-    packets = capture_service.get_packets()
-    analyzed = analyzer_service.analyze(packets)
-
-    # Apply filters
+@app.get("/packets")
+def get_packets(protocol: Optional[str] = None, src_ip: Optional[str] = None, dst_ip: Optional[str] = None):
+    query = select(packets_table)
+    
     if protocol:
-        analyzed = [pkt for pkt in analyzed if pkt.get("protocol") == protocol]
+        query = query.where(packets_table.c.protocol == protocol)
     if src_ip:
-        analyzed = [pkt for pkt in analyzed if pkt.get("src_ip") == src_ip]
+        query = query.where(packets_table.c.src_ip == src_ip)
     if dst_ip:
-        analyzed = [pkt for pkt in analyzed if pkt.get("dst_ip") == dst_ip]
+        query = query.where(packets_table.c.dst_ip == dst_ip)
+    
+    with engine.connect() as conn:
+        result = conn.execute(query).fetchall()
+    
+    return [dict(r) for r in result]
 
-    return jsonify(analyzed)
+
+@app.get("/anomalies")
+def get_anomalies():
+    df = train_anomaly_detector()
+    if df is None:
+        return {"message": "No packets captured yet."}
+    anomalies = df[df['anomaly'] == -1]
+    return anomalies.to_dict(orient='records')
 
 
-if __name__ == "__main__":
-    # Important: bind to 0.0.0.0 and use port 8000 for EC2 access
-    app.run(host="0.0.0.0", port=8000, debug=True)
+@app.post("/capture")
+def start_capture(count: int = 10, filter: Optional[str] = None):
+    capture_packets(count=count, filter=filter)
+    return {"message": f"Captured {count} packets"}
