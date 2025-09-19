@@ -1,0 +1,799 @@
+To automate deployment of a Python app using Docker and Kubernetes in an AWS environment,a typical approach involves:
+Here's a condensed example workflow for this automation:
+FROM
+python:
+3.7
+RUN
+mkdir
+/app
+WORKDIR
+/app
+COPY
+requirements.txt /app/
+RUN
+pip install -r requirements.txt
+COPY
+. /app/
+EXPOSE
+5000
+CMD
+[
+"python"
+,
+"app.py"
+]
+apiVersion:
+apps/v1
+kind:
+Deployment
+metadata:
+name:
+python-app
+spec:
+replicas:
+2
+selector:
+matchLabels:
+app:
+python-app
+template:
+metadata:
+labels:
+app:
+python-app
+spec:
+Automated Deployment Script to docker andKubernetes in AWS env for my python app1.
+Creating a Dockerfile to containerize the Python app.2.
+Building and pushing the Docker image to Amazon Elastic Container Registry (ECR).3.
+Creating Kubernetes manifests (Deployment, Service) to run the container in a Kubernetescluster (EKS).4.
+Automating the above steps using a CI/CD pipeline like Jenkins or AWS CodePipeline with aPython script or pipeline script controlling the process.
+Dockerfile for Python App
+Kubernetes deployment manifest (deployment.yaml)
+containers:
+-
+name:
+python-app
+image:
+<aws_account_id>.dkr.ecr.<region>.amazonaws.com/python-app:<tag>
+ports:
+-
+containerPort:
+5000
+---
+apiVersion:
+v1
+kind:
+Service
+metadata:
+name:
+python-app-service
+spec:
+type:
+LoadBalancer
+selector:
+app:
+python-app
+ports:
+-
+protocol:
+TCP
+port:
+80
+targetPort:
+5000
+A Python script can update image tags or trigger deployments using AWS SDK or subprocesscalls to
+kubectl
+.
+This approach supports a fully automated CI/CD pipeline that builds your Python app image,pushes it to ECR, and deploys it on EKS Kubernetes cluster on AWS.
+Would you like a full example including a detailed Jenkinsfile pipeline, Python deployment script,and Terraform/EKS setup? Or another specific part?
+This workflow is consistent with best practices for automated deployments on AWS EKS usingDocker, Kubernetes, and Python.
+⁂
+Here is a complete example of an automated deployment script setup using AWS CodePipeline,CodeBuild, Docker, and Kubernetes (EKS) for your Python app.
+Example Jenkins pipeline script stages
+Checkout source code
+Build Docker image
+Authenticate and push image to ECR
+Deploy/update Kubernetes deployment using kubectl
+Sample Python automation example for deployment update
+[
+1]
+[
+2]
+[
+3]
+[
+4]
+Give me code for automation for the deployment
+FROM
+python:
+3.7
+WORKDIR
+/app
+COPY
+requirements.txt /app/
+RUN
+pip install -r requirements.txt
+COPY
+. /app/
+EXPOSE
+5000
+CMD
+[
+"python"
+,
+"app.py"
+]
+apiVersion:
+apps/v1
+kind:
+Deployment
+metadata:
+name:
+python-app
+spec:
+replicas:
+2
+selector:
+matchLabels:
+app:
+python-app
+template:
+metadata:
+labels:
+app:
+python-app
+spec:
+containers:
+-
+name:
+python-app
+image:
+<aws_account_id>.dkr.ecr.<region>.amazonaws.com/python-app:<tag>
+ports:
+-
+containerPort:
+5000
+---
+apiVersion:
+v1
+kind:
+Service
+metadata:
+name:
+python-app-service
+spec:
+type:
+LoadBalancer
+selector:
+app:
+python-app
+ports:
+-
+protocol:
+TCP
+port:
+80
+targetPort:
+5000
+1. Dockerfile (python-app Docker container)
+2. Kubernetes Deployment Manifest (deployment.yaml)
+version:
+0.2
+env:
+variables:
+ECR_REGISTRY:
+"<aws_account_id>.dkr.ecr.<region>.amazonaws.com"
+IMAGE_REPO_NAME:
+"python-app"
+AWS_DEFAULT_REGION:
+"<region>"
+CLUSTER_NAME:
+"your-eks-cluster-name"
+phases:
+pre_build:
+commands:
+-
+echo
+Logging
+in
+to
+Amazon
+ECR...
+-
+aws
+ecr
+get-login-password
+--region
+$AWS_DEFAULT_REGION
+|
+docker
+login
+--username
+build:
+commands:
+-
+echo
+Build
+Docker
+image...
+-
+docker
+build
+-t
+$IMAGE_REPO_NAME:$CODEBUILD_RESOLVED_SOURCE_VERSION
+.
+-
+docker
+tag
+$IMAGE_REPO_NAME:$CODEBUILD_RESOLVED_SOURCE_VERSION
+$ECR_REGISTRY/$IMA
+post_build:
+commands:
+-
+echo
+Push
+Docker
+image
+to
+ECR...
+-
+docker
+push
+$ECR_REGISTRY/$IMAGE_REPO_NAME:$CODEBUILD_RESOLVED_SOURCE_VERSION
+-
+echo
+Update
+Kubernetes
+deployment...
+-
+aws
+eks
+--region
+$AWS_DEFAULT_REGION
+update-kubeconfig
+--name
+$CLUSTER_NAME
+-
+kubectl
+set
+image
+deployment/python-app
+python-app=$ECR_REGISTRY/$IMAGE_REPO_NAME
+-
+kubectl
+rollout
+status
+deployment/python-app
+artifacts:
+files:
+-
+'**/*'
+3. CodeBuild Build Specification (buildspec.yml)
+4. Automation Flow Summary:
+A CodeCommit repository holds your Python app code and this Dockerfile, buildspec.yml,deployment.yaml.
+CodePipeline watches CodeCommit for changes to start the pipeline.
+CodeBuild builds the Docker image, pushes it to ECR.
+CodeBuild then runs kubectl commands (using updated kubeconfig) to update theKubernetes deployment on your EKS cluster.
+Kubernetes performs a rolling update of your app pods.
+If needed, a detailed Jenkins pipeline or Terraform scripts for EKS provisioning can also beshared. Let me know if you want those.
+This automation example is production-ready for continuous deployment of your Python app onKubernetes in AWS.
+⁂
+Below is an example Python automation script that builds a Docker image for your Python app,pushes it to Amazon ECR, and updates a Kubernetes deployment on AWS EKS using theKubernetes Python client. This script assumes you have AWS CLI configured locally withpermissions and kubectl configured for your EKS cluster.
+import
+subprocess
+import
+boto3
+import
+base64
+from
+kubernetes
+import
+client, config
+# Configuration parameters - replace with your values
+AWS_REGION =
+"your-region"
+ECR_REPOSITORY =
+"python-app"
+IMAGE_TAG =
+"latest"
+AWS_ACCOUNT_ID =
+"your-aws-account-id"
+EKS_CLUSTER_NAME =
+"your-eks-cluster-name"
+def
+get_ecr_login_password
+(): client_ecr = boto3.client(
+'ecr'
+, region_name=AWS_REGION) auth_token = client_ecr.get_authorization_token() token = auth_token[
+'authorizationData'
+][^
+3_0
+][
+'authorizationToken'
+] user_pass = base64.b64decode(token).decode(
+'utf-8'
+) password = user_pass.split(
+':'
+)[^
+3_1
+] proxy_endpoint = auth_token[
+'authorizationData'
+][^
+3_0
+][
+'proxyEndpoint'
+]
+return
+password, proxy_endpoint
+def
+docker_login
+(
+registry, password
+):
+print
+(
+f"Logging in to Docker registry
+{registry}
+"
+) login_cmd = [
+'docker'
+,
+'login'
+,
+'-u'
+,
+'AWS'
+,
+'-p'
+, password, registry] subprocess.check_call(login_cmd)
+def
+build_and_push_docker_image
+(
+registry
+): image_full_name =
+f"
+{registry}
+/
+{ECR_REPOSITORY}
+:
+{IMAGE_TAG}
+"
+print
+(
+f"Building Docker image
+{image_full_name}
+"
+) subprocess.check_call([
+'docker'
+,
+'build'
+,
+'-t'
+, image_full_name,
+'.'
+])
+Notes:
+Replace placeholders like
+<aws_account_id>
+,
+<region>
+, and
+your-eks-cluster-name
+with youractual AWS account info and EKS cluster name.
+Grant CodeBuild service role permissions for ECR, EKS, and CodeCommit.
+Ensure your EKS cluster has proper IAM roles and node permissions.
+[
+11]
+[
+12]
+I need the automation script in python
+print
+(
+f"Pushing Docker image
+{image_full_name}
+"
+) subprocess.check_call([
+'docker'
+,
+'push'
+, image_full_name])
+return
+image_full_name
+def
+update_k8s_deployment
+(
+image
+):
+print
+(
+"Loading Kubernetes config"
+) config.load_kube_config()
+# Assumes ~/.kube/config is set up for EKS cluster
+k8s_api = client.AppsV1Api() deployment_name =
+"python-app"
+namespace =
+"default"
+print
+(
+f"Updating image for deployment
+{deployment_name}
+to
+{image}
+"
+) deployment = k8s_api.read_namespaced_deployment(name=deployment_name, namespace=names deployment.spec.template.spec.containers[^
+3_0
+].image = image k8s_api.patch_namespaced_deployment(name=deployment_name, namespace=namespace, body=d
+print
+(
+"Deployment updated successfully."
+)
+def
+main
+(): password, registry = get_ecr_login_password() docker_login(registry, password) full_image_name = build_and_push_docker_image(registry) update_k8s_deployment(full_image_name)
+print
+(
+"Deployment automation completed."
+)
+if
+__name__ ==
+"__main__"
+: main()
+This script can be integrated into any CI/CD job or run locally to automate deployments fromcode to container to Kubernetes on AWS.
+How it works:
+Logs into Amazon ECR Docker registry using Boto3 to fetch auth token.
+Builds local Docker image of your Python app and tags it with ECR repo URL.
+Pushes the Docker image to ECR.
+Loads your kubeconfig locally and updates the Kubernetes deployment container image tothe new pushed image, triggering a rolling update.
+Prerequisites
+Python packages:
+boto3
+,
+kubernetes
+(install via pip)
+AWS CLI configured with credentials for ECR and EKS access
+Docker installed and running locally
+kubectl
+configured to access your EKS cluster (your local kubeconfig)
+Kubernetes deployment named
+python-app
+already exists in the
+default
+namespace
+If you want, I can help you build more complex logic for build versioning, error handling, androllout status checks in this script.
+Would you like that?
+⁂
+Here is an enhanced Python automation script to deploy your Python app locally from yourmachine to AWS EKS Kubernetes, including building the Docker image, pushing it to ECR, andperforming a rolling update with status checks. This is designed to be run manually or from alocal workstation, not as part of CI/CD:
+import
+subprocess
+import
+boto3
+import
+base64
+import
+time
+from
+kubernetes
+import
+client, config
+# Configuration - update with your values
+AWS_REGION =
+"your-region"
+ECR_REPO =
+"python-app"
+IMAGE_TAG =
+"latest"
+AWS_ACCOUNT_ID =
+"your-aws-account-id"
+EKS_CLUSTER =
+"your-eks-cluster-name"
+DEPLOYMENT_NAME =
+"python-app"
+NAMESPACE =
+"default"
+def
+ecr_login
+(): ecr = boto3.client(
+'ecr'
+, region_name=AWS_REGION) auth = ecr.get_authorization_token() token = auth[
+'authorizationData'
+][^
+4_0
+][
+'authorizationToken'
+] proxy_endpoint = auth[
+'authorizationData'
+][^
+4_0
+][
+'proxyEndpoint'
+] password = base64.b64decode(token).decode().split(
+':'
+)[^
+4_1
+]
+print
+(
+f"Logging into ECR
+{proxy_endpoint}
+..."
+) subprocess.run([
+"docker"
+,
+"login"
+,
+"-u"
+,
+"AWS"
+,
+"-p"
+, password, proxy_endpoint ], check=
+True
+)
+return
+proxy_endpoint
+def
+build_and_push_image
+(
+registry_url
+): image_uri =
+f"
+{registry_url}
+/
+{ECR_REPO}
+:
+{IMAGE_TAG}
+"
+print
+(
+"Building Docker image..."
+) subprocess.run([
+"docker"
+,
+"build"
+,
+"-t"
+, image_uri,
+"."
+], check=
+True
+)
+yes plz but I need the deployment automationfrom local rather than CICD
+print
+(
+f"Pushing Docker image
+{image_uri}
+to ECR..."
+) subprocess.run([
+"docker"
+,
+"push"
+, image_uri ], check=
+True
+)
+return
+image_uri
+def
+update_kubernetes_deployment
+(
+image_uri
+):
+print
+(
+"Updating kubeconfig for EKS cluster..."
+) subprocess.run([
+"aws"
+,
+"eks"
+,
+"--region"
+, AWS_REGION,
+"update-kubeconfig"
+,
+"--name"
+, EKS_CLUSTER ], check=
+True
+)
+print
+(
+"Loading Kubernetes config..."
+) config.load_kube_config() api = client.AppsV1Api()
+print
+(
+f"Fetching Deployment '
+{DEPLOYMENT_NAME}
+' in namespace '
+{NAMESPACE}
+'..."
+) deployment = api.read_namespaced_deployment(name=DEPLOYMENT_NAME, namespace=NAMESPACE
+print
+(
+f"Current image:
+{deployment.spec.template.spec.containers[^
+4_0
+].image}
+"
+) deployment.spec.template.spec.containers[^
+4_0
+].image = image_uri
+print
+(
+f"Updating Deployment image to
+{image_uri}
+..."
+) api.patch_namespaced_deployment(name=DEPLOYMENT_NAME, namespace=NAMESPACE, body=deplo
+print
+(
+"Waiting for rollout status..."
+)
+while
+True
+: status = api.read_namespaced_deployment_status(DEPLOYMENT_NAME, NAMESPACE) ready_replicas = status.status.ready_replicas
+or
+0
+replicas = status.status.replicas
+or
+0
+if
+ready_replicas == replicas
+and
+replicas !=
+0
+:
+print
+(
+f"Deployment '
+{DEPLOYMENT_NAME}
+' successfully rolled out."
+)
+break
+else
+:
+print
+(
+f"Waiting...
+{ready_replicas}
+/
+{replicas}
+ready"
+) time.sleep(
+5
+)
+def
+main
+(): registry_url = ecr_login() image_uri = build_and_push_image(registry_url) update_kubernetes_deployment(image_uri)
+print
+(
+"Deployment automation complete."
+)
+if
+__name__ ==
+"__main__"
+: main()
+Features:
+Logs in to your ECR registry using AWS SDK and Docker CLI.
+Builds a Docker image from the current directory with your Python app.
+Pushes the image to the AWS ECR repository.
+Run this script from your local dev or operations machine whenever you want to automate buildand deploy your Python app to Kubernetes on AWS.
+Let me know if you want help generating your Dockerfile or Kubernetes YAML manifests to goalong with this script.
+This approach covers local manual automation precisely as requested.
+⁂
+To run the provided Python deployment automation script locally, follow these steps:
+Updates your Kubernetes deployment's image in EKS using the Kubernetes Python client.
+Waits and polls until the rollout is complete with all replicas ready.
+Prerequisites:
+AWS CLI installed and configured locally (with permissions for ECR, EKS).
+Docker installed and running locally.
+kubectl
+configured for your EKS cluster (usable by Python Kubernetes client).
+Python packages:
+boto3
+,
+kubernetes
+installed (
+pip install boto3 kubernetes
+).
+Kubernetes Deployment named
+python-app
+configured in namespace
+default
+(adjust
+NAMESPACE
+if needed).
+let me know how to run this
+1. Prerequisites
+AWS CLI:
+Must be installed and configured with credentials having ECR and EKSpermissions.
+Docker:
+Installed and running locally.
+kubectl:
+Installed and configured to access your EKS cluster.
+Python Environment:
+Python 3 with
+boto3
+and
+kubernetes
+Python modules installed.
+Install modules by running:
+pip install boto3 kubernetes
+2. Prepare your environment
+Make sure your Kubernetes config (
+~/.kube/config
+) is configured and able to communicatewith your EKS cluster, which you can verify by running:
+kubectl get nodes
+This process automates the full build-and-deploy cycle locally without CI/CD, providing quickfeedback from local changes to deployed Kubernetes workloads on AWS.
+If you face any permission errors, verify your AWS credentials, IAM roles, and EKS nodepermissions.
+Would you like a small checklist or troubleshooting tips for this workflow?
+⁂
+Your deployment must already exist in the cluster with the same name (
+python-app
+or asconfigured).
+Your Dockerfile and Python application should be in the current directory of the script.
+3. Configure the script
+Open the Python script.
+Replace placeholders:
+AWS_REGION
+: Your AWS region (e.g.,
+us-east-1
+)
+AWS_ACCOUNT_ID
+: Your AWS Account ID
+EKS_CLUSTER
+: Your EKS cluster name
+Other variables like ECR repo name, tag as needed.
+4. Run the script
+Open a terminal in the directory where the script lives and run:
+python deploy_script.py
+(
+Replace
+deploy_script.py
+with your filename.)
+What happens:
+Script logs into Amazon ECR using boto3 and Docker CLI.
+Builds Docker image from local source.
+Pushes Docker image to your Amazon ECR repository.
+Uses
+kubectl
+(via Kubernetes Python client) to update the deployment image in your EKScluster.
+Waits until the deployment rollout is complete (all pods are ready).1.
+https://devops.supportsages.com/automating-kubernetes-service-deployment-with-aws-codecommit-and-python-script-a16f4a077a672.
+https://www.metricfire.com/blog/develop-and-deploy-a-python-api-with-kubernetes-and-docker/3.
+https://www.coachdevops.com/2024/10/deploy-python-app-into-kubernetes.html4.
+https://kubernetes.io/blog/2019/07/23/get-started-with-kubernetes-using-python/
+5.
+https://www.cockroachlabs.com/docs/cockroachcloud/deploy-a-python-to-do-app-with-flask-kubernetes-and-cockroachcloud6.
+https://dev.to/aws-builders/introduction-to-kubernetes-and-aws-eks-part-1-19e57.
+https://docs.aws.amazon.com/codecatalyst/latest/userguide/deploy-tut-eks.html8.
+https://faun.pub/automating-python-scripts-that-take-over-15-minutes-to-run-using-docker-and-amazon-ecs-bd974f03c0759.
+https://aws.plainenglish.io/deploy-cloud-native-monitoring-app-on-kubernetes-42ca974cd47c10.
+https://stackoverflow.com/questions/49654457/how-to-auto-deploy-docker-containers-from-amazon-ecr-to-kubernetes-using-jenkins11.
+https://nicd.org.uk/knowledge-hub/continuous-application-deployment-with-aws-and-kubernetes12.
+https://blog.ascendingdc.com/continuous-deployment-kubernetes-platform-using-aws-codepipeline13.
+https://blog.devops.dev/automating-the-build-and-deployment-process-of-a-saas-application-on-kubernetes-using-ci-cd-0b166f01561c14.
+https://aws.amazon.com/blogs/containers/container-devsecops-with-aws-codepipeline-using-hadolint-and-anchore-engine/15.
+https://docs.aws.amazon.com/codepipeline/latest/userguide/pipelines-create.html16.
+https://docs.aws.amazon.com/codepipeline/latest/userguide/tutorials-simple-codecommit.html17.
+https://www.clickittech.com/devops/ci-cd-pipeline/18.
+https://aws.plainenglish.io/building-a-ci-cd-pipeline-using-aws-codepipeline-and-codebuild-d03b7581168d19.
+https://devops.supportsages.com/automating-kubernetes-service-deployment-with-aws-codecommit-and-python-script-a16f4a077a6720.
+https://aws.plainenglish.io/deploy-cloud-native-monitoring-app-on-kubernetes-42ca974cd47c21.
+https://faun.pub/automating-python-scripts-that-take-over-15-minutes-to-run-using-docker-and-amazon-ecs-bd974f03c07522.
+https://docs.aws.amazon.com/codecatalyst/latest/userguide/deploy-tut-eks.html23.
+https://aws.plainenglish.io/how-to-use-docker-compose-and-python-to-automate-your-jenkins-environment-a-hands-on-guide-f1b094fb81d424.
+https://thelearningjourney.co/automating-the-cloud-the-evolution-of-a-python-app-with-docker-kubernetes-and-terraform/25.
+https://docs.aws.amazon.com/sagemaker/latest/dg/docker-containers.html26.
+https://kubernetes.io/blog/2019/07/23/get-started-with-kubernetes-using-python/27.
+https://docs.docker.com/guides/python/deploy/28.
+https://www.tigera.io/blog/deploy-your-first-deep-learning-model-on-kubernetes-with-python-keras-flask-and-docker/29.
+https://dev.to/bravinsimiyu/how-to-dockerize-and-deploy-a-fast-api-application-to-kubernetes-cluster-35a930.
+https://devtron.ai/blog/deploy-microservices-on-kubernetes/31.
+https://www.cockroachlabs.com/docs/cockroachcloud/deploy-a-python-to-do-app-with-flask-kubernetes-and-cockroachcloud32.
+https://www.digitalocean.com/community/tutorials/how-to-deploy-python-application-on-kubernetes-with-okteto
+33.
+https://aws.plainenglish.io/master-ci-cd-pipeline-for-python-app-deployment-on-aws-eks-with-healthcheck-endpoint-using-891762aae1db34.
+https://dev.to/marocz/automating-eks-deployment-and-nginx-setup-using-helm-with-aws-cdk-in-python-27mn35.
+https://hackbotone.com/how-to-build-and-deploy-a-python-flask-application-to-aws-eks-using-ecr-ef9da21aa5e436.
+https://www.checkmateq.com/blog/python-script37.
+https://www.learnaws.org/2021/06/23/python-app-eks-cluster/38.
+https://aws.amazon.com/blogs/containers/deploy-python-application-using-aws-app-runner/39.
+https://docs.aws.amazon.com/eks/latest/userguide/sample-deployment.html40.
+https://docs.aws.amazon.com/systems-manager/latest/userguide/automation-action-executeScript.html
